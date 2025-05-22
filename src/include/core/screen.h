@@ -9,6 +9,11 @@
 #include <algorithm>
 using namespace std;
 
+struct mat4x4
+{
+    float m[4][4] = {0};
+};
+
 struct vec3d
 {
     float x;
@@ -57,9 +62,11 @@ struct mesh
     }
 };
 
-struct mat4x4
+struct Camera
 {
-    float m[4][4] = {0};
+    vec3d position = {0.0f, 0.0f, 0.0f};
+    vec3d target = {0.0f, 0.0f, 1.0f};
+    vec3d up = {0.0f, 1.0f, 0.0f};
 };
 
 class Screen
@@ -67,7 +74,7 @@ class Screen
 public:
     Screen(mesh &meshCube);
 
-    void show(float elapsedTime);
+    void show(float elapsedTime, float deltatime);
 
     void input();
 
@@ -78,10 +85,15 @@ private:
     mesh meshCube;
     mat4x4 matProj;
     int width, height;
-    vec3d vCamera;
+    Camera cam;
     float rotation_x = 0.0f;
     float rotation_y = 0.0f;
     float rotation_z = 0.0f;
     float FOV = 10.0;
     float DeltaTime = 0.0f;
+    float yaw = 0.0f;
+    float pitch = 0.0f;
+    int lastMouseX = width / 2;
+    int lastMouseY = height / 2;
+    bool rotation_active = true;
 };

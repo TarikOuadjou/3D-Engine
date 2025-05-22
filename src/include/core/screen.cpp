@@ -1,5 +1,4 @@
 #include "screen.h"
-
 void MultiplyMatrixVector(vec3d &i, vec3d &o, mat4x4 &m)
 {
     o.x = i.x * m.m[0][0] + i.y * m.m[1][0] + i.z * m.m[2][0] + m.m[3][0];
@@ -93,13 +92,125 @@ void DrawTriangle(SDL_Renderer *renderer, int x1, int y1, int x2, int y2, int x3
     SDL_RenderDrawLine(renderer, x3, y3, x1, y1); // Ligne entre (x3, y3) et (x1, y1)
 }
 
-Screen::Screen(mesh &meshCube) : meshCube(meshCube) /*, cam(cam)*/
+vec3d Vector_Add(const vec3d &a, const vec3d &b)
+{
+    return {a.x + b.x, a.y + b.y, a.z + b.z};
+}
+
+vec3d Vector_Sub(const vec3d &a, const vec3d &b)
+{
+    return {a.x - b.x, a.y - b.y, a.z - b.z};
+}
+
+vec3d Vector_Mul(const vec3d &v, float k)
+{
+    return {v.x * k, v.y * k, v.z * k};
+}
+
+vec3d Vector_Div(const vec3d &v, float k)
+{
+    return {v.x / k, v.y / k, v.z / k};
+}
+
+float Vector_Dot(const vec3d &a, const vec3d &b)
+{
+    return a.x * b.x + a.y * b.y + a.z * b.z;
+}
+
+float Vector_Length(const vec3d &v)
+{
+    return sqrtf(Vector_Dot(v, v));
+}
+
+vec3d Vector_Normalise(const vec3d &v)
+{
+    float l = Vector_Length(v);
+    return Vector_Div(v, l);
+}
+
+vec3d Vector_CrossProduct(const vec3d &a, const vec3d &b)
+{
+    return {
+        a.y * b.z - a.z * b.y,
+        a.z * b.x - a.x * b.z,
+        a.x * b.y - a.y * b.x};
+}
+
+mat4x4 Matrix_PointAt(vec3d &pos, vec3d &target, vec3d &up)
+{
+    // Calculer la nouvelle direction vers laquelle la caméra regarde
+    vec3d newForward = Vector_Sub(target, pos);
+    newForward = Vector_Normalise(newForward);
+
+    // Un vecteur temporaire pour construire les axes
+    vec3d a = Vector_Mul(newForward, Vector_Dot(up, newForward));
+    vec3d newUp = Vector_Sub(up, a);
+    newUp = Vector_Normalise(newUp);
+
+    vec3d newRight = Vector_CrossProduct(newUp, newForward);
+
+    // Construire la matrice
+    mat4x4 matrix;
+    matrix.m[0][0] = newRight.x;
+    matrix.m[0][1] = newRight.y;
+    matrix.m[0][2] = newRight.z;
+    matrix.m[0][3] = 0.0f;
+    matrix.m[1][0] = newUp.x;
+    matrix.m[1][1] = newUp.y;
+    matrix.m[1][2] = newUp.z;
+    matrix.m[1][3] = 0.0f;
+    matrix.m[2][0] = newForward.x;
+    matrix.m[2][1] = newForward.y;
+    matrix.m[2][2] = newForward.z;
+    matrix.m[2][3] = 0.0f;
+    matrix.m[3][0] = pos.x;
+    matrix.m[3][1] = pos.y;
+    matrix.m[3][2] = pos.z;
+    matrix.m[3][3] = 1.0f;
+    return matrix;
+}
+
+// Matrice de vue = inverse de PointAt
+mat4x4 Matrix_QuickInverse(mat4x4 &m)
+{
+    mat4x4 matrix;
+    matrix.m[0][0] = m.m[0][0];
+    matrix.m[0][1] = m.m[1][0];
+    matrix.m[0][2] = m.m[2][0];
+    matrix.m[0][3] = 0.0f;
+    matrix.m[1][0] = m.m[0][1];
+    matrix.m[1][1] = m.m[1][1];
+    matrix.m[1][2] = m.m[2][1];
+    matrix.m[1][3] = 0.0f;
+    matrix.m[2][0] = m.m[0][2];
+    matrix.m[2][1] = m.m[1][2];
+    matrix.m[2][2] = m.m[2][2];
+    matrix.m[2][3] = 0.0f;
+    matrix.m[3][0] = -(m.m[3][0] * matrix.m[0][0] + m.m[3][1] * matrix.m[1][0] + m.m[3][2] * matrix.m[2][0]);
+    matrix.m[3][1] = -(m.m[3][0] * matrix.m[0][1] + m.m[3][1] * matrix.m[1][1] + m.m[3][2] * matrix.m[2][1]);
+    matrix.m[3][2] = -(m.m[3][0] * matrix.m[0][2] + m.m[3][1] * matrix.m[1][2] + m.m[3][2] * matrix.m[2][2]);
+    matrix.m[3][3] = 1.0f;
+    return matrix;
+}
+
+Screen::Screen(mesh &meshCube) : meshCube(meshCube)
 {
     SDL_Init(SDL_INIT_VIDEO);
     width = 640;
     height = 480;
-    vCamera = {0.0f, 0.0f, 0.0f};
-    SDL_CreateWindowAndRenderer(width, height, 0, &window, &renderer);
+    cam.position = {0.0f, 0.0f, 0.0f};
+    cam.target = {0.0f, 0.0f, 1.0f};
+    cam.up = {0.0f, 1.0f, 0.0f};
+    float fYaw = 0.0f; // rotation autour de l'axe Y (gauche/droite)
+    window = SDL_CreateWindow("Mon jeu FPS",
+                              SDL_WINDOWPOS_CENTERED,
+                              SDL_WINDOWPOS_CENTERED,
+                              1280, 720,
+                              SDL_WINDOW_OPENGL | SDL_WINDOW_RESIZABLE);
+    // SDL_SetWindowFullscreen(window, SDL_WINDOW_FULLSCREEN);
+    renderer = SDL_CreateRenderer(window, -1, SDL_RENDERER_ACCELERATED | SDL_RENDERER_PRESENTVSYNC);
+    SDL_GetWindowSize(window, &width, &height);
+    SDL_ShowCursor(SDL_FALSE);
     float fNear = 0.1f;
     float fFar = 1000.0f;
     float fFov = 90.0f;
@@ -114,17 +225,23 @@ Screen::Screen(mesh &meshCube) : meshCube(meshCube) /*, cam(cam)*/
     return;
 }
 
-void Screen::show(float elapsedTime)
+void Screen::show(float elapsedTime, float deltatime)
 {
+    if (rotation_active)
+    {
+        SDL_WarpMouseInWindow(window, width / 2, height / 2);
+    }
+    DeltaTime = deltatime;
     SDL_SetRenderDrawColor(renderer, 0, 0, 0, SDL_ALPHA_OPAQUE);
     SDL_RenderClear(renderer);
     SDL_SetRenderDrawColor(renderer, 255, 255, 255, SDL_ALPHA_OPAQUE);
-    float fTheta = 0.0f;
-    fTheta += elapsedTime * 1.0f;
-    // Créer les matrices de rotation
-    mat4x4 matRotZ = CreateRotationMatrixZ(fTheta);
-    mat4x4 matRotX = CreateRotationMatrixX(fTheta * 0.5f);
+    //  Créer les matrices de rotation
+    mat4x4 matRotZ = CreateRotationMatrixZ(elapsedTime);
+    mat4x4 matRotX = CreateRotationMatrixX(elapsedTime * 0.5f);
     vector<triangle> vecTrianglesToRaster;
+    // Créer la matrice de vue
+    mat4x4 matCam = Matrix_PointAt(cam.position, cam.target, cam.up);
+    mat4x4 matView = Matrix_QuickInverse(matCam);
     for (auto tri : meshCube.tris)
     {
         triangle triProjected, triTranslated, triRotatedZ, triRotatedZX;
@@ -137,18 +254,24 @@ void Screen::show(float elapsedTime)
         MultiplyMatrixVector(triRotatedZ.p[1], triRotatedZX.p[1], matRotX);
         MultiplyMatrixVector(triRotatedZ.p[2], triRotatedZX.p[2], matRotX);
         // Translation
-        triTranslated = triRotatedZX;
-        triTranslated.p[0].z = triRotatedZX.p[0].z + 8.0f;
-        triTranslated.p[1].z = triRotatedZX.p[1].z + 8.0f;
-        triTranslated.p[2].z = triRotatedZX.p[2].z + 8.0f;
+        triTranslated.p[0] = triRotatedZX.p[0];
+        triTranslated.p[1] = triRotatedZX.p[1];
+        triTranslated.p[2] = triRotatedZX.p[2];
+        triTranslated.p[0].z += 8.0f;
+        triTranslated.p[1].z += 8.0f;
+        triTranslated.p[2].z += 8.0f;
 
+        triangle triViewed;
+        MultiplyMatrixVector(triTranslated.p[0], triViewed.p[0], matView);
+        MultiplyMatrixVector(triTranslated.p[1], triViewed.p[1], matView);
+        MultiplyMatrixVector(triTranslated.p[2], triViewed.p[2], matView);
         vec3d normal, line1, line2;
-        line1.x = triTranslated.p[1].x - triTranslated.p[0].x;
-        line1.y = triTranslated.p[1].y - triTranslated.p[0].y;
-        line1.z = triTranslated.p[1].z - triTranslated.p[0].z;
-        line2.x = triTranslated.p[2].x - triTranslated.p[0].x;
-        line2.y = triTranslated.p[2].y - triTranslated.p[0].y;
-        line2.z = triTranslated.p[2].z - triTranslated.p[0].z;
+        line1.x = triViewed.p[1].x - triViewed.p[0].x;
+        line1.y = triViewed.p[1].y - triViewed.p[0].y;
+        line1.z = triViewed.p[1].z - triViewed.p[0].z;
+        line2.x = triViewed.p[2].x - triViewed.p[0].x;
+        line2.y = triViewed.p[2].y - triViewed.p[0].y;
+        line2.z = triViewed.p[2].z - triViewed.p[0].z;
         normal.x = line1.y * line2.z - line1.z * line2.y;
         normal.y = line1.z * line2.x - line1.x * line2.z;
         normal.z = line1.x * line2.y - line1.y * line2.x;
@@ -160,7 +283,10 @@ void Screen::show(float elapsedTime)
             normal.y /= l;
             normal.z /= l;
         }
-        if (normal.x * (triTranslated.p[0].x - vCamera.x) + normal.y * (triTranslated.p[0].y - vCamera.y) + normal.z * (triTranslated.p[0].z - vCamera.z) < 0.0f)
+        if (normal.x * triViewed.p[0].x +
+                normal.y * triViewed.p[0].y +
+                normal.z * triViewed.p[0].z <
+            0.0f)
         {
             // Lumière
             vec3d light_direction = {0.0f, 0.0f, -1.0f};
@@ -176,9 +302,9 @@ void Screen::show(float elapsedTime)
             triProjected.green_color = 255 * dp;
             triProjected.blue_color = 255 * dp;
             // Projection
-            MultiplyMatrixVector(triTranslated.p[0], triProjected.p[0], matProj);
-            MultiplyMatrixVector(triTranslated.p[1], triProjected.p[1], matProj);
-            MultiplyMatrixVector(triTranslated.p[2], triProjected.p[2], matProj);
+            MultiplyMatrixVector(triViewed.p[0], triProjected.p[0], matProj);
+            MultiplyMatrixVector(triViewed.p[1], triProjected.p[1], matProj);
+            MultiplyMatrixVector(triViewed.p[2], triProjected.p[2], matProj);
 
             // Scaling
             triProjected.p[0].x += 1.0f;
@@ -197,30 +323,89 @@ void Screen::show(float elapsedTime)
             // store triangle for z sorting
             vecTrianglesToRaster.push_back(triProjected);
         }
+    }
 
-        // Sort triangles from back to front
-        sort(vecTrianglesToRaster.begin(), vecTrianglesToRaster.end(), [](triangle &t1, triangle &t2)
-             { return (t1.p[0].z + t1.p[1].z + t1.p[2].z) / 3.0f > (t2.p[0].z + t2.p[1].z + t2.p[2].z) / 3.0f; });
+    // Sort triangles from back to front
+    sort(vecTrianglesToRaster.begin(), vecTrianglesToRaster.end(), [](triangle &t1, triangle &t2)
+         { return (t1.p[0].z + t1.p[1].z + t1.p[2].z) / 3.0f > (t2.p[0].z + t2.p[1].z + t2.p[2].z) / 3.0f; });
 
-        for (auto &triProjected : vecTrianglesToRaster)
-        {
-            SDL_SetRenderDrawColor(renderer, triProjected.red_color, triProjected.green_color, triProjected.blue_color, SDL_ALPHA_OPAQUE);
-            DrawFilledTriangle(renderer, (int)triProjected.p[0].x, (int)triProjected.p[0].y, (int)triProjected.p[1].x, (int)triProjected.p[1].y, (int)triProjected.p[2].x, (int)triProjected.p[2].y);
-            /*SDL_SetRenderDrawColor(renderer, 0, 0, 0, SDL_ALPHA_OPAQUE);
-            DrawTriangle(renderer, (int)triProjected.p[0].x, (int)triProjected.p[0].y, (int)triProjected.p[1].x, (int)triProjected.p[1].y, (int)triProjected.p[2].x, (int)triProjected.p[2].y);*/
-        }
+    for (auto &triProjected : vecTrianglesToRaster)
+    {
+        SDL_SetRenderDrawColor(renderer, triProjected.red_color, triProjected.green_color, triProjected.blue_color, SDL_ALPHA_OPAQUE);
+        DrawFilledTriangle(renderer, (int)triProjected.p[0].x, (int)triProjected.p[0].y, (int)triProjected.p[1].x, (int)triProjected.p[1].y, (int)triProjected.p[2].x, (int)triProjected.p[2].y);
+        /*SDL_SetRenderDrawColor(renderer, 0, 0, 0, SDL_ALPHA_OPAQUE);
+        DrawTriangle(renderer, (int)triProjected.p[0].x, (int)triProjected.p[0].y, (int)triProjected.p[1].x, (int)triProjected.p[1].y, (int)triProjected.p[2].x, (int)triProjected.p[2].y);*/
     }
     SDL_RenderPresent(renderer);
 }
 
 void Screen::input()
 {
-    while (SDL_PollEvent(&e))
+    SDL_Event event;
+    while (SDL_PollEvent(&event))
     {
-        if (e.type == SDL_QUIT)
+        if (event.type == SDL_QUIT)
         {
             SDL_Quit();
             exit(0);
+        }
+        else if (event.type == SDL_KEYDOWN)
+        {
+            float step = 10.0f;
+            switch (event.key.keysym.sym)
+            {
+            case SDLK_z:
+                cam.position.z += step * DeltaTime;
+                break;
+            case SDLK_s:
+                cam.position.z -= step * DeltaTime;
+                break;
+            case SDLK_q:
+                cam.position.x -= step * DeltaTime;
+                break;
+            case SDLK_d:
+                cam.position.x += step * DeltaTime;
+                break;
+            case SDLK_ESCAPE:
+                rotation_active = !rotation_active;
+                if (rotation_active == false)
+                {
+                    SDL_ShowCursor(SDL_TRUE);
+                }
+                else
+                {
+                    SDL_ShowCursor(SDL_FALSE);
+                    SDL_WarpMouseInWindow(window, width / 2, height / 2);
+                }
+            }
+        }
+        else if (event.type == SDL_MOUSEMOTION)
+        {
+            if (rotation_active == true)
+            {
+                int mouseX = event.motion.x;
+                int mouseY = event.motion.y;
+
+                int deltaX = mouseX - width / 2;
+                int deltaY = mouseY - height / 2;
+
+                float sensitivity = 0.002f;
+                yaw += deltaX * sensitivity;
+                pitch += deltaY * sensitivity;
+
+                // Clamp le pitch pour éviter les retournements
+                if (pitch > 1.5f)
+                    pitch = 1.5f;
+                if (pitch < -1.5f)
+                    pitch = -1.5f;
+
+                // Recalculer le vecteur direction
+                cam.target.x = cosf(pitch) * sinf(yaw);
+                cam.target.y = sinf(pitch);
+                cam.target.z = cosf(pitch) * cosf(yaw);
+
+                cam.target = Vector_Add(cam.position, cam.target); // Assure la direction
+            }
         }
     }
 }

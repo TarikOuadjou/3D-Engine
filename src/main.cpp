@@ -8,17 +8,19 @@ int main(int argc, char *argv[])
 	meshCube.LoadFromObjectFile("res/spaceship.obj");
 	Screen screen(meshCube);
 	Uint32 startTime = SDL_GetTicks();
-	const int FPS = 45;
+	const int FPS = 60;
 	const int frameDelay = 1000 / FPS;
+	Uint32 lastTime = SDL_GetTicks();
 	while (true)
 	{
 		Uint32 frameStart = SDL_GetTicks();
 
 		// Calculate elapsed time
 		Uint32 currentTime = SDL_GetTicks();
+		float deltaTime = (currentTime - lastTime) / 1000.0f;
 		float elapsedTime = (currentTime - startTime) / 1000.0f; // Convert milliseconds to seconds
-
-		screen.show(elapsedTime);
+		lastTime = currentTime;
+		screen.show(elapsedTime, deltaTime);
 		screen.input();
 
 		Uint32 frameTime = SDL_GetTicks() - frameStart;
