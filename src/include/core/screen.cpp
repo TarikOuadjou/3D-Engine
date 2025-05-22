@@ -408,4 +408,11 @@ void Screen::input()
             }
         }
     }
+    vec3d direction;
+    direction.x = cosf(pitch) * sinf(yaw);
+    direction.y = sinf(pitch);
+    direction.z = cosf(pitch) * cosf(yaw);
+
+    // Mettre à jour cam.target en fonction de cam.position + direction
+    cam.target = Vector_Add(cam.position, direction);
 }
